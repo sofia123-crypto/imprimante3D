@@ -5,130 +5,79 @@ from datetime import datetime, timedelta
 import random
 import os
 
-# ---------- CONFIGURATION ----------
-IMPRIMANTES_A = ['A' + str(i) for i in range(1, 11)]
-IMPRIMANTES_B = ['B' + str(i) for i in range(1, 7)]
-HEURE_MIN = 8 * 60   # 8h00 en minutes
-HEURE_MAX = 17 * 60  # 17h00 en minutes
-
-# ---------- INITIALISATION SESSION ----------
-if 'date' not in st.session_state:
+# ---------- CONFIG ---------- #
+if "date" not in st.session_state:
     st.session_state.date = datetime.today().date()
-if 'planning' not in st.session_state:
-    st.session_state.planning = pd.DataFrame(columns=['date', 'imprimante', 'ticket', 'debut', 'fin', 'couleur', 'type'])
 
-# ---------- CHARGER / SAUVER CSV ----------
-def charger_planning():
-    if os.path.exists('planning.csv'):
-        return pd.read_csv('planning.csv', parse_dates=['date'])
-    return pd.DataFrame(columns=['date', 'imprimante', 'ticket', 'debut', 'fin', 'couleur', 'type'])
+# ---------- FONCTIONS ---------- #
+def load_data(date):
+    filename = f"planning_{date}.csv"
+    if os.path.exists(filename):
+        return pd.read_csv(filename)
+    else:
+        return pd.DataFrame(columns=["PrinterID", "Start", "Duration", "Ticket", "Type", "Color"])
 
-def sauvegarder_planning(df):
-    df.to_csv('planning.csv', index=False)
+def save_data(df, date):
+    df.to_csv(f"planning_{date}.csv", index=False)
 
-# ---------- AJOUTER UN TICKET ----------
-def ajouter_ticket(ticket, heure_depart, duree, type_poste):
-    # Vérification des horaires
-    if heure_depart < HEURE_MIN or heure_depart > HEURE_MAX:
-        st.error("L'heure de départ doit être entre 08:00 et 17:00 !")
-        return
-
-    imprimantes = IMPRIMANTES_A if type_poste == 'A' else IMPRIMANTES_B
-    planning = charger_planning()
-    
-    dispo = None
-    for imp in imprimantes:
-        # Vérifier si l'imprimante est libre sur toute la durée (y compris chevauchements inter-jours)
-        en_conflit = planning[
-            (planning['imprimante'] == imp) &
-            (planning['date'] == st.session_state.date) &
-            (
-                ((planning['debut'] <= heure_depart) & (planning['fin'] > heure_depart)) |
-                ((planning['debut'] < heure_depart + duree) & (planning['fin'] >= heure_depart + duree)) |
-                ((planning['debut'] >= heure_depart) & (planning['fin'] <= heure_depart + duree))
-            )
+def find_available_printer(df, start, duration, type_):
+    printers = [f"{type_}{i+1}" for i in range(10 if type_ == "A" else 6)]
+    for printer in printers:
+        bookings = df[df["PrinterID"] == printer]
+        overlaps = bookings[
+            (pd.to_datetime(bookings["Start"]) < start + timedelta(minutes=duration)) &
+            (pd.to_datetime(bookings["Start"]) + pd.to_timedelta(bookings["Duration"], 'm') > start)
         ]
-        if en_conflit.empty:
-            dispo = imp
-            break
+        if overlaps.empty:
+            return printer
+    return None
 
-    if dispo is None:
-        st.warning("Aucune imprimante disponible pour cet horaire.")
-        return
+# ---------- INTERFACE ---------- #
+st.title(f"Planning Impression - {st.session_state.date}")
 
-    couleur = "#%06x" % random.randint(0, 0xFFFFFF)
-
-    nv_ticket = pd.DataFrame([{
-        'date': st.session_state.date,
-        'imprimante': dispo,
-        'ticket': ticket,
-        'debut': heure_depart,
-        'fin': heure_depart + duree,
-        'couleur': couleur,
-        'type': type_poste
-    }])
-
-    planning = pd.concat([planning, nv_ticket], ignore_index=True)
-    sauvegarder_planning(planning)
-    st.success(f"Ticket {ticket} affecté à {dispo}")
-
-# ---------- AFFICHER GANTT ----------
-def afficher_gantt():
-    planning = charger_planning()
-    # Inclure les impressions qui commencent la veille et continuent
-    df = planning[
-        (planning['date'] == st.session_state.date) |
-        (planning['date'] == st.session_state.date - timedelta(days=1))
-    ]
-    if df.empty:
-        st.info("Aucune impression prévue pour ce jour.")
-        return
-
-    # Ajuster les heures si chevauchement
-    df['start'] = df.apply(lambda row: max(row['debut'], 0), axis=1)
-    df['end'] = df['fin']
-
-    fig = px.timeline(
-        df,
-        x_start='start',
-        x_end='end',
-        y='imprimante',
-        color='ticket',
-        color_discrete_map={row['ticket']: row['couleur'] for idx, row in df.iterrows()},
-        title=f"Planning du {st.session_state.date.strftime('%d/%m/%Y')}",
-    )
-    fig.update_layout(xaxis=dict(
-        tickmode='linear',
-        tick0=0,
-        dtick=60,
-        title='Minutes de la journée'
-    ))
-    st.plotly_chart(fig, use_container_width=True)
-
-# ---------- INTERFACE UTILISATEUR ----------
-st.title("Gestion Planning Impression 3D")
-
-with st.form("ajout_ticket"):
-    col1, col2 = st.columns(2)
-    with col1:
-        ticket = st.text_input("Numéro du ticket")
-        type_poste = st.selectbox("Type de poste", ['A', 'B'])
-    with col2:
-        heure_depart_time = st.time_input("Heure de départ", value=datetime.strptime("08:00", "%H:%M").time())
-        # Convertir l'heure en minutes
-        heure_depart = heure_depart_time.hour * 60 + heure_depart_time.minute
-
-        duree = st.number_input("Durée (minutes)", min_value=1, max_value=1440, value=60)
-    submitted = st.form_submit_button("Ajouter Impression")
-    if submitted:
-        ajouter_ticket(ticket, heure_depart, duree, type_poste)
-
-st.markdown("---")
-col1, col2 = st.columns(2)
-if col1.button("Jour Précédent"):
+col1, col2, col3 = st.columns(3)
+if col1.button("Jour précédent"):
     st.session_state.date -= timedelta(days=1)
-if col2.button("Jour Suivant"):
+if col3.button("Jour suivant"):
     st.session_state.date += timedelta(days=1)
 
-st.subheader(f"Planning du {st.session_state.date.strftime('%d/%m/%Y')}")
-afficher_gantt()
+df = load_data(st.session_state.date)
+
+with st.form("add_ticket"):
+    ticket = st.text_input("Numéro Ticket", "")
+    type_ = st.selectbox("Type", ["A", "B"])
+    start_time = st.time_input("Heure Début (08:00 - 17:00)", value=datetime.strptime("08:00", "%H:%M").time())
+    duration = st.number_input("Durée (min)", min_value=1, max_value=1440, value=60)
+    submitted = st.form_submit_button("Ajouter Impression")
+    
+    if submitted:
+        start_datetime = datetime.combine(st.session_state.date, start_time)
+        if not (8 <= start_time.hour <= 17):
+            st.error("L'heure de début doit être entre 08:00 et 17:00")
+        else:
+            printer = find_available_printer(df, start_datetime, duration, type_)
+            if printer:
+                new_entry = {
+                    "PrinterID": printer,
+                    "Start": start_datetime,
+                    "Duration": duration,
+                    "Ticket": ticket,
+                    "Type": type_,
+                    "Color": f"#{random.randint(0, 0xFFFFFF):06x}"
+                }
+                df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
+                save_data(df, st.session_state.date)
+                st.success(f"Impression ajoutée à {printer}")
+            else:
+                st.error("Aucune imprimante disponible")
+
+# ---------- AFFICHAGE GANTT ---------- #
+if not df.empty:
+    df["End"] = pd.to_datetime(df["Start"]) + pd.to_timedelta(df["Duration"], unit='m')
+    fig = px.timeline(df, x_start="Start", x_end="End", y="PrinterID", color="Ticket", color_discrete_sequence=df["Color"])
+    fig.update_yaxes(autorange="reversed")
+    fig.update_layout(xaxis=dict(tickformat="%H:%M"), height=600)
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("Aucune impression pour ce jour.")
+
