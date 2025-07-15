@@ -114,7 +114,10 @@ with st.form("ajout_ticket"):
         ticket = st.text_input("Numéro du ticket")
         type_poste = st.selectbox("Type de poste", ['A', 'B'])
     with col2:
-        heure_depart = st.number_input("Heure de départ (minutes)", min_value=0, max_value=1440, value=480)
+        heure_depart_time = st.time_input("Heure de départ", value=datetime.strptime("08:00", "%H:%M").time())
+        # Convertir l'heure en minutes
+        heure_depart = heure_depart_time.hour * 60 + heure_depart_time.minute
+
         duree = st.number_input("Durée (minutes)", min_value=1, max_value=1440, value=60)
     submitted = st.form_submit_button("Ajouter Impression")
     if submitted:
