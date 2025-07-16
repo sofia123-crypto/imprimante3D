@@ -195,7 +195,7 @@ else:
         if not idx.empty:
             current_df = remove_entry(current_df, idx[0])
             save_planning(current_df, st.session_state.date)
-            st.success(f"❌ Impression '{to_delete}' annulée.")
+            st.success(f"❌ Impression '{to_delete}' annulée. veuillez rafraîchir la page!")
         else:
             st.warning("Ce ticket vient peut-être de la veille : modifiez le jour pour le supprimer.")
 
