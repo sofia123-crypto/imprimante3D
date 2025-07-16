@@ -78,20 +78,25 @@ def plot_gantt(df):
         color_discrete_sequence=df["Color"].tolist(),
         labels={"Printer": "Imprimantes", "Start": "Heure", "End": "Fin"},
     )
+
+    # Ordre d’affichage des imprimantes
     fig.update_yaxes(categoryorder='array', categoryarray=ALL_PRINTERS[::-1])
+
+    # Afficher toute la journée : de 00:00 à 23:59 (ou plus si dépassement)
     fig.update_layout(
         xaxis=dict(
             tickformat="%H:%M",
             range=[
-                datetime.combine(st.session_state.date, time(8,0)),
-                datetime.combine(st.session_state.date, time(17,0))
+                datetime.combine(st.session_state.date, time(0, 0)),
+                datetime.combine(st.session_state.date + timedelta(days=1), time(0, 0))
             ],
-            dtick=3600*1000,
+            dtick=3600 * 1000,
             title="Heure"
         ),
         height=600,
-        title=f"Planning du {st.session_state.date.strftime('%d/%m/%Y')}"
+        title=f"🕒 Planning du {st.session_state.date.strftime('%d/%m/%Y')}"
     )
+
     st.plotly_chart(fig, use_container_width=True)
 
 def remove_entry(df, index):
@@ -162,6 +167,9 @@ with st.form("form_add"):
                 st.session_state.planning = pd.concat([st.session_state.planning, pd.DataFrame([new_line])], ignore_index=True)
                 save_planning(st.session_state.planning, st.session_state.date)
                 st.success("✅ Impression ajoutée avec succès.")
+end_dt = start_dt + timedelta(minutes=duration)
+if end_dt.date() > st.session_state.date:
+    st.info("ℹ️ L'impression dépassera minuit et sera visible sur deux journées.")
 
 # Affichage planning actuel
 st.subheader("📋 Planning du jour")
