@@ -17,7 +17,7 @@ if not os.path.exists(DATA_FOLDER):
 if "date" not in st.session_state:
     st.session_state.date = datetime.today().date()
 
-# Charger planning depuis fichier à chaque chargement
+# --- Fonctions fichiers ---
 def date_to_filename(date):
     return os.path.join(DATA_FOLDER, f"planning_{date}.csv")
 
@@ -33,10 +33,24 @@ def save_planning(df, date):
     file = date_to_filename(date)
     df.to_csv(file, index=False)
 
-# Charger la dernière version du fichier CSV à chaque interaction
-st.session_state.planning = load_planning(st.session_state.date)
+# --- Afficher les tâches du jour + celles de la veille qui débordent ---
+def get_planning_with_previous_day(date):
+    today_df = load_planning(date)
+    previous_df = load_planning(date - timedelta(days=1))
 
-# --- FONCTIONS UTILES ---
+    extended = []
+    for _, row in previous_df.iterrows():
+        start = row["Start"]
+        end = start + timedelta(minutes=row["Duration"])
+        if start.date() < date and end.date() >= date:
+            adjusted_row = row.copy()
+            adjusted_row["Start"] = datetime.combine(date, time(0, 0))
+            adjusted_row["Duration"] = int((end - adjusted_row["Start"]).total_seconds() / 60)
+            extended.append(adjusted_row)
+
+    return pd.concat([today_df] + [pd.DataFrame(extended)], ignore_index=True)
+
+# --- Autres fonctions ---
 def validate_inputs(printer, start_time, ticket, duration):
     errors = []
     if printer not in ALL_PRINTERS:
@@ -53,6 +67,9 @@ def generate_color(ticket):
     h = hashlib.md5(ticket.encode()).hexdigest()
     return "#" + h[:6]
 
+def remove_entry(df, index):
+    return df.drop(index).reset_index(drop=True)
+
 def plot_gantt(df):
     import plotly.express as px
     from pandas import Timestamp
@@ -60,14 +77,13 @@ def plot_gantt(df):
     df = df.copy()
     df["End"] = df["Start"] + pd.to_timedelta(df["Duration"], unit='m')
 
-    # Ajouter imprimantes manquantes pour affichage
     all_printers_df = pd.DataFrame({"Printer": ALL_PRINTERS})
     df = pd.merge(all_printers_df, df, on="Printer", how="left")
 
     df["Start"] = df["Start"].fillna(Timestamp(st.session_state.date))
     df["End"] = df["End"].fillna(Timestamp(st.session_state.date))
     df["Ticket"] = df["Ticket"].fillna("Libre")
-    df["Color"] = df["Color"].fillna("#e0e0e0")  # gris clair
+    df["Color"] = df["Color"].fillna("#e0e0e0")
 
     fig = px.timeline(
         df,
@@ -78,11 +94,7 @@ def plot_gantt(df):
         color_discrete_sequence=df["Color"].tolist(),
         labels={"Printer": "Imprimantes", "Start": "Heure", "End": "Fin"},
     )
-
-    # Ordre d’affichage des imprimantes
     fig.update_yaxes(categoryorder='array', categoryarray=ALL_PRINTERS[::-1])
-
-    # Afficher toute la journée : de 00:00 à 23:59 (ou plus si dépassement)
     fig.update_layout(
         xaxis=dict(
             tickformat="%H:%M",
@@ -96,32 +108,26 @@ def plot_gantt(df):
         height=600,
         title=f"🕒 Planning du {st.session_state.date.strftime('%d/%m/%Y')}"
     )
-
     st.plotly_chart(fig, use_container_width=True)
 
-def remove_entry(df, index):
-    return df.drop(index).reset_index(drop=True)
-
 # --- INTERFACE ---
+st.set_page_config(page_title="📅 Planning Impression 3D", layout="wide")
 st.title("📅 Planning Impression 3D - Atelier")
 
-# Navigation jour
+# Navigation date
 col1, col2, col3 = st.columns([1,3,1])
 with col1:
     if st.button("⬅️ Jour précédent"):
         st.session_state.date -= timedelta(days=1)
-        st.session_state.planning = load_planning(st.session_state.date)
 with col3:
     if st.button("Jour suivant ➡️"):
         st.session_state.date += timedelta(days=1)
-        st.session_state.planning = load_planning(st.session_state.date)
 with col2:
     new_date = st.date_input("📆 Date", st.session_state.date)
     if new_date != st.session_state.date:
         st.session_state.date = new_date
-        st.session_state.planning = load_planning(st.session_state.date)
 
-# Formulaire d'ajout
+# Formulaire ajout
 with st.form("form_add"):
     st.subheader("➕ Ajouter une impression")
     colA, colB = st.columns(2)
@@ -142,17 +148,20 @@ with st.form("form_add"):
                 st.error(e)
         else:
             start_dt = datetime.combine(st.session_state.date, start_time)
-            # Vérifier conflits
+            end_dt = start_dt + timedelta(minutes=duration)
+
+            # Vérifier conflit
+            current_df = load_planning(st.session_state.date)
             conflit = False
-            for idx, row in st.session_state.planning.iterrows():
+            for _, row in current_df.iterrows():
                 if row["Printer"] != printer:
                     continue
                 existing_start = row["Start"]
                 existing_end = existing_start + timedelta(minutes=row["Duration"])
-                new_end = start_dt + timedelta(minutes=duration)
-                if not (new_end <= existing_start or start_dt >= existing_end):
+                if not (end_dt <= existing_start or start_dt >= existing_end):
                     conflit = True
                     break
+
             if conflit:
                 st.error("❌ Conflit avec un créneau existant sur cette imprimante.")
             else:
@@ -164,25 +173,31 @@ with st.form("form_add"):
                     "Ticket": ticket,
                     "Color": color
                 }
-                st.session_state.planning = pd.concat([st.session_state.planning, pd.DataFrame([new_line])], ignore_index=True)
-                save_planning(st.session_state.planning, st.session_state.date)
+                updated_df = pd.concat([current_df, pd.DataFrame([new_line])], ignore_index=True)
+                save_planning(updated_df, st.session_state.date)
                 st.success("✅ Impression ajoutée avec succès.")
-end_dt = start_dt + timedelta(minutes=duration)
-if end_dt.date() > st.session_state.date:
-    st.info("ℹ️ L'impression dépassera minuit et sera visible sur deux journées.")
 
-# Affichage planning actuel
+                # Message si dépasse minuit
+                if end_dt.date() > st.session_state.date:
+                    st.info("ℹ️ L'impression dépassera minuit et continuera le jour suivant.")
+
+# Affichage planning + suppression
 st.subheader("📋 Planning du jour")
 
-if st.session_state.planning.empty:
-    st.info("Aucune impression enregistrée pour ce jour.")
+full_df = get_planning_with_previous_day(st.session_state.date)
+if full_df.empty:
+    st.info("Aucune impression planifiée pour cette date.")
 else:
-    to_delete = st.selectbox("🗑️ Sélectionner une impression à annuler (par ticket)", options=st.session_state.planning["Ticket"].tolist())
+    to_delete = st.selectbox("🗑️ Sélectionner une impression à annuler (par ticket)", options=full_df["Ticket"].unique())
     if st.button("Annuler l’impression sélectionnée"):
-        idx = st.session_state.planning[st.session_state.planning["Ticket"] == to_delete].index[0]
-        st.session_state.planning = remove_entry(st.session_state.planning, idx)
-        save_planning(st.session_state.planning, st.session_state.date)
-        st.success(f"❌ Impression '{to_delete}' annulée avec succès.")
+        current_df = load_planning(st.session_state.date)
+        idx = current_df[current_df["Ticket"] == to_delete].index
+        if not idx.empty:
+            current_df = remove_entry(current_df, idx[0])
+            save_planning(current_df, st.session_state.date)
+            st.success(f"❌ Impression '{to_delete}' annulée.")
+        else:
+            st.warning("Ce ticket vient peut-être de la veille : modifiez le jour pour le supprimer.")
 
-# Affichage diagramme de Gantt
-plot_gantt(st.session_state.planning)
+# Affichage Gantt
+plot_gantt(full_df)
