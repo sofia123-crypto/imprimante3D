@@ -221,13 +221,22 @@ with st.form("form_add"):
 
 st.subheader("📋 Planning du jour")
 
+st.subheader("📋 Planning du jour")
+
 full_df = get_planning_with_previous_day(st.session_state.date)
 
-if full_df.empty or "Start" not in full_df.columns or full_df["Start"].isna().all():
+# ✅ Affiche message si aucune tâche, mais continue l'affichage du planning
+if full_df["Ticket"].isna().all():
     st.info("Aucune impression planifiée pour cette date.")
-    st.warning("⚠️ Impossible d'afficher le planning : données manquantes ou vides.")
-else:
-    to_delete = st.selectbox("🗑️ Sélectionner une impression à annuler (par ticket)", options=full_df["Ticket"].unique())
+
+# ✅ Affiche quand même le Gantt si les bonnes colonnes sont là
+required_columns = {"Start", "End", "Printer", "Ticket"}
+if required_columns.issubset(full_df.columns):
+    # 🗑️ Annulation d'une impression
+    to_delete = st.selectbox(
+        "🗑️ Sélectionner une impression à annuler (par ticket)",
+        options=full_df["Ticket"].unique()
+    )
     if st.button("Annuler l’impression sélectionnée"):
         current_df = load_planning(st.session_state.date)
         idx = current_df[current_df["Ticket"] == to_delete].index
@@ -238,5 +247,7 @@ else:
         else:
             st.warning("Ce ticket vient peut-être de la veille : modifiez le jour pour le supprimer.")
 
+    # 📊 Affichage du diagramme de Gantt
     plot_gantt(full_df)
-
+else:
+    st.warning("⚠️ Impossible d'afficher le planning : colonnes manquantes.")
