@@ -5,29 +5,28 @@ import os
 import hashlib
 import firebase_admin
 from firebase_admin import credentials, firestore
+import json
 
-# Créer le dictionnaire de config à partir des secrets
-firebase_config = {
-    "type": st.secrets["FIREBASE_TYPE"],
-    "project_id": st.secrets["FIREBASE_PROJECT_ID"],
-    "private_key_id": st.secrets["FIREBASE_PRIVATE_KEY_ID"],
-    "private_key": st.secrets["FIREBASE_PRIVATE_KEY"].replace("\\n", "\n"),
-    "client_email": st.secrets["FIREBASE_CLIENT_EMAIL"],
-    "client_id": st.secrets["FIREBASE_CLIENT_ID"],
-    "auth_uri": st.secrets["FIREBASE_AUTH_URI"],
-    "token_uri": st.secrets["FIREBASE_TOKEN_URI"],
-    "auth_provider_x509_cert_url": st.secrets["FIREBASE_AUTH_PROVIDER_X509_CERT_URL"],
-    "client_x509_cert_url": st.secrets["FIREBASE_CLIENT_X509_CERT_URL"],
-    "universe_domain": st.secrets["FIREBASE_UNIVERSE_DOMAIN"]
-}
-
-# Initialiser Firebase
+# --- 🔐 CONFIGURATION FIREBASE À PARTIR DE SECRETS STREAMLIT ---
 if not firebase_admin._apps:
-    cred = credentials.Certificate(firebase_config)
+    firebase_json = {
+        "type": st.secrets["FIREBASE_TYPE"],
+        "project_id": st.secrets["FIREBASE_PROJECT_ID"],
+        "private_key_id": st.secrets["FIREBASE_PRIVATE_KEY_ID"],
+        "private_key": st.secrets["FIREBASE_PRIVATE_KEY"].replace("\\n", "\n"),
+        "client_email": st.secrets["FIREBASE_CLIENT_EMAIL"],
+        "client_id": st.secrets["FIREBASE_CLIENT_ID"],
+        "auth_uri": st.secrets["FIREBASE_AUTH_URI"],
+        "token_uri": st.secrets["FIREBASE_TOKEN_URI"],
+        "auth_provider_x509_cert_url": st.secrets["FIREBASE_AUTH_PROVIDER_X509_CERT_URL"],
+        "client_x509_cert_url": st.secrets["FIREBASE_CLIENT_X509_CERT_URL"],
+        "universe_domain": st.secrets["FIREBASE_UNIVERSE_DOMAIN"]
+    }
+
+    cred = credentials.Certificate(firebase_json)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
-
 
 # --- CONSTANTES ---
 PRINTERS_A = [f"A{i+1}" for i in range(10)]
@@ -63,7 +62,6 @@ def save_planning(df, date):
     df_copy["Start"] = df_copy["Start"].astype(str)
     doc_ref.set({"entries": df_copy.to_dict(orient="records")})
 
-# --- Afficher les tâches du jour + celles de la veille qui débordent ---
 def get_planning_with_previous_day(date):
     today_df = load_planning(date)
     previous_df = load_planning(date - timedelta(days=1))
@@ -144,7 +142,6 @@ def plot_gantt(df):
 st.set_page_config(page_title="📅 Planning Impression 3D", layout="wide")
 st.title("📅 Planning Impression 3D - Atelier")
 
-# Navigation date
 col1, col2, col3 = st.columns([1,3,1])
 with col1:
     if st.button("⬅️ Jour précédent"):
@@ -157,7 +154,6 @@ with col2:
     if new_date != st.session_state.date:
         st.session_state.date = new_date
 
-# Formulaire ajout
 with st.form("form_add"):
     st.subheader("➕ Ajouter une impression")
     colA, colB = st.columns(2)
@@ -209,7 +205,6 @@ with st.form("form_add"):
                 if end_dt.date() > st.session_state.date:
                     st.info("ℹ️ L'impression dépassera minuit et continuera le jour suivant.")
 
-# Affichage planning + suppression
 st.subheader("📋 Planning du jour")
 
 full_df = get_planning_with_previous_day(st.session_state.date)
@@ -227,5 +222,4 @@ else:
         else:
             st.warning("Ce ticket vient peut-être de la veille : modifiez le jour pour le supprimer.")
 
-# Affichage Gantt
 plot_gantt(full_df)
