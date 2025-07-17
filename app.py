@@ -236,24 +236,36 @@ st.write(full_df.head())
 
 # ✅ Affiche Gantt si les bonnes colonnes sont là
 required_columns = {"Start", "End", "Printer", "Ticket"}
-if required_columns.issubset(full_df.columns):
+
+# 🔍 Vérifie proprement les colonnes, même si DataFrame vide
+actual_columns = set(map(str, full_df.columns))
+missing_columns = required_columns - actual_columns
+
+if not missing_columns:
+    # ✅ Affiche un message si le planning est vide
+    if full_df.empty:
+        st.info("📭 Le planning est vide pour cette date.")
+    else:
+        st.success("✅ Planning chargé.")
+
     # 🗑️ Annulation d'une impression
-    to_delete = st.selectbox(
-        "🗑️ Sélectionner une impression à annuler (par ticket)",
-        options=full_df["Ticket"].unique()
-    )
-    if st.button("Annuler l’impression sélectionnée"):
-        current_df = load_planning(st.session_state.date)
-        idx = current_df[current_df["Ticket"] == to_delete].index
-        if not idx.empty:
-            current_df = remove_entry(current_df, idx[0])
-            save_planning(current_df, st.session_state.date)
-            st.success(f"❌ Impression '{to_delete}' annulée. veuillez rafraîchir la page!")
-        else:
-            st.warning("Ce ticket vient peut-être de la veille : modifiez le jour pour le supprimer.")
+    if not full_df.empty:
+        to_delete = st.selectbox(
+            "🗑️ Sélectionner une impression à annuler (par ticket)",
+            options=full_df["Ticket"].unique()
+        )
+        if st.button("Annuler l’impression sélectionnée"):
+            current_df = load_planning(st.session_state.date)
+            idx = current_df[current_df["Ticket"] == to_delete].index
+            if not idx.empty:
+                current_df = remove_entry(current_df, idx[0])
+                save_planning(current_df, st.session_state.date)
+                st.success(f"❌ Impression '{to_delete}' annulée. veuillez rafraîchir la page!")
+            else:
+                st.warning("Ce ticket vient peut-être de la veille : modifiez le jour pour le supprimer.")
 
-    # 📊 Affichage du diagramme de Gantt
+    # 📊 Affichage du diagramme de Gantt (même vide !)
     plot_gantt(full_df)
-else:
-    st.warning("⚠️ Impossible d'afficher le planning : colonnes manquantes.")
 
+else:
+    st.warning(f"⚠️ Impossible d'afficher le planning : colonnes manquantes : {missing_columns}")
