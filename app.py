@@ -240,6 +240,8 @@ required_columns = {"Start", "End", "Printer", "Ticket"}
 # 🔍 Vérifie proprement les colonnes, même si DataFrame vide
 actual_columns = set(map(str, full_df.columns))
 missing_columns = required_columns - actual_columns
+st.write("📋 Colonnes actuelles du planning :", full_df.columns.tolist())
+st.write("🔍 Aperçu du planning :", full_df.head())
 
 if not missing_columns:
     # ✅ Affiche un message si le planning est vide
