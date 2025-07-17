@@ -3,6 +3,15 @@ import pandas as pd
 from datetime import datetime, timedelta, time
 import os
 import hashlib
+import firebase_admin
+from firebase_admin import credentials, firestore
+
+# Initialisation de Firebase
+cred = credentials.Certificate("credentials/credentials.json")
+firebase_admin.initialize_app(cred)
+
+# Connexion à Firestore
+db = firestore.client()
 
 # --- CONSTANTES ---
 PRINTERS_A = [f"A{i+1}" for i in range(10)]
