@@ -119,14 +119,22 @@ def plot_gantt(df):
     df = df.copy()
     df["End"] = df["Start"] + pd.to_timedelta(df["Duration"], unit='m')
 
+    # 👇 Merge avec toutes les imprimantes
     all_printers_df = pd.DataFrame({"Printer": ALL_PRINTERS})
     df = pd.merge(all_printers_df, df, on="Printer", how="left")
 
-    df["Start"] = df["Start"].fillna(Timestamp(st.session_state.date))
-    df["End"] = df["End"].fillna(Timestamp(st.session_state.date))
-    df["Ticket"] = df["Ticket"].fillna("Libre")
+    # 👇 Remplissage des valeurs manquantes pour affichage Gantt
+    df["Start"] = df["Start"].fillna(Timestamp.combine(st.session_state.date, time(0, 0)))
+    df["End"] = df["End"].fillna(Timestamp.combine(st.session_state.date, time(0, 1)))  # 1 min factice
+    df["Ticket"] = df["Ticket"].fillna("Aucune tâche")
     df["Color"] = df["Color"].fillna("#e0e0e0")
 
+    # ✅ Option : masquer les imprimantes sans tâches réelles
+    hide_empty = st.checkbox("Masquer les imprimantes sans tâche réelle", value=False)
+    if hide_empty:
+        df = df[df["Ticket"] != "Aucune tâche"]
+
+    # 📊 Génération du Gantt
     fig = px.timeline(
         df,
         x_start="Start",
@@ -153,6 +161,7 @@ def plot_gantt(df):
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 
 # --- INTERFACE ---
 st.set_page_config(page_title="📅 Planning Impression 3D", layout="wide")
