@@ -1,87 +1,107 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime, timedelta
+import os
+from datetime import datetime, timedelta, time
 
-st.set_page_config(page_title="📅 Planning des Imprimantes 3D", layout="wide")
-st.title("🖨️ Gestion des Imprimantes 3D")
+st.set_page_config(page_title="📅 Planning des Impressions 3D", layout="wide")
+st.title("📊 Planning actuel")
+st.markdown("### Planning des impressions 3D")
 
-# === Paramètres ===
-heures_jour = [f"{h:02d}:00" for h in range(8, 18)]  # De 08:00 à 17:00 uniquement
+# === Données simulées ou chargées ===
+# Le CSV utilisé pour stocker les tâches
+csv_path = "planning.csv"
+
+# Imprimantes à toujours afficher
 imprimantes_A = [f"A{i}" for i in range(1, 11)]
 imprimantes_B = [f"B{i}" for i in range(1, 7)]
-toutes_imprimantes = imprimantes_A + imprimantes_B
+all_imprimantes = imprimantes_A + imprimantes_B
 
-# === Initialisation session state ===
-if "df" not in st.session_state:
-    st.session_state.df = pd.DataFrame(columns=["Printer", "Start", "Duration", "End", "Task"])
+# === Chargement du planning actuel ===
+if os.path.exists(csv_path):
+    full_df = pd.read_csv(csv_path)
+    full_df["Start"] = pd.to_datetime(full_df["Start"])
+else:
+    full_df = pd.DataFrame(columns=["Ticket", "Start", "Duration", "Imprimante"])
 
-# === Barre latérale : Ajout de tâche ===
-st.sidebar.header("➕ Ajouter une tâche")
+# Calcul de la colonne "End" et nettoyage
+if not full_df.empty:
+    full_df = full_df.dropna(subset=["Start", "Duration"])
+    full_df["Duration"] = pd.to_numeric(full_df["Duration"], errors="coerce")
+    full_df["End"] = full_df["Start"] + pd.to_timedelta(full_df["Duration"], unit="m")
+    full_df["Imprimante"] = full_df["Imprimante"].astype(str)
+    full_df["Ticket"] = full_df["Ticket"].astype(str)
 
-printer = st.sidebar.selectbox("Choisir une imprimante", toutes_imprimantes)
-date = st.sidebar.date_input("Date de début", datetime.now().date())
-heure = st.sidebar.selectbox("Heure de début", heures_jour)
-duration = st.sidebar.number_input("Durée (min)", min_value=15, max_value=480, step=15)
-task = st.sidebar.text_input("Nom de la tâche")
+# === Option pour afficher/masquer les imprimantes sans tâche ===
+afficher_vides = st.checkbox("Afficher les imprimantes libres", value=True)
 
-if st.sidebar.button("Ajouter au planning"):
-    start = datetime.strptime(f"{date} {heure}", "%Y-%m-%d %H:%M")
-    end = start + timedelta(minutes=duration)
-    new_row = pd.DataFrame({
-        "Printer": [printer],
-        "Start": [start],
-        "Duration": [duration],
-        "End": [end],
-        "Task": [task or "Tâche sans nom"]
+# Ajout des imprimantes vides si demandé
+if afficher_vides:
+    used = set(full_df["Imprimante"].unique())
+    unused = set(all_imprimantes) - used
+    lignes_vides = pd.DataFrame({
+        "Ticket": ["Libre"] * len(unused),
+        "Start": [datetime.now()] * len(unused),
+        "End": [datetime.now()] * len(unused),
+        "Imprimante": list(unused)
     })
-    st.session_state.df = pd.concat([st.session_state.df, new_row], ignore_index=True)
-    st.success("✅ Tâche ajoutée au planning !")
+    full_df = pd.concat([full_df, lignes_vides], ignore_index=True)
 
-# === Option : Afficher ou masquer imprimantes sans tâche ===
-show_empty = st.checkbox("Afficher les imprimantes sans tâche", value=True)
-
-# === Construction du DataFrame final ===
-full_df = st.session_state.df.copy()
-
-# Forcer typage propre pour éviter erreurs
-full_df["Start"] = pd.to_datetime(full_df["Start"], errors="coerce")
-full_df["Duration"] = pd.to_numeric(full_df["Duration"], errors="coerce")
-mask = full_df["Start"].notna() & full_df["Duration"].notna()
-full_df.loc[mask, "End"] = full_df.loc[mask, "Start"] + pd.to_timedelta(full_df.loc[mask, "Duration"], unit="m")
-
-# Ajouter imprimantes vides si demandé
-if show_empty:
-    df_imprimantes = pd.DataFrame({"Printer": toutes_imprimantes})
-    full_df = pd.merge(df_imprimantes, full_df, on="Printer", how="left")
-
-# === Diagramme de Gantt ===
-st.subheader("📊 Planning actuel")
-
-if not full_df.empty and full_df["Start"].notna().any():
-    color_discrete_sequence = px.colors.qualitative.Vivid  # Couleurs plus vives
+# === Gantt Chart ===
+if not full_df.empty:
     fig = px.timeline(
         full_df,
         x_start="Start",
         x_end="End",
-        y="Printer",
-        color="Task",
-        title="Planning des impressions 3D",
-        color_discrete_sequence=color_discrete_sequence
+        y="Imprimante",
+        color="Ticket",
+        color_discrete_sequence=px.colors.qualitative.Vivid,
+        title="Planification des impressions"
     )
-    fig.update_yaxes(autorange="reversed")
+    fig.update_yaxes(categoryorder="category ascending")
     fig.update_layout(
         height=600,
-        margin=dict(l=20, r=20, t=40, b=20),
-        xaxis_title="Temps",
+        margin=dict(l=20, r=20, t=30, b=20),
+        xaxis_title="Heure",
         yaxis_title="Imprimante"
     )
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.info("Aucune tâche planifiée pour le moment.")
+    st.info("Aucune tâche planifiée pour l'instant.")
 
-# === Pied de page ===
-st.markdown("""
----
-👨‍🔧 *Développé pour la gestion interne des imprimantes 3D. Dernière mise à jour : juillet 2025.*
-""")
+# === Ajout d'une nouvelle tâche ===
+st.markdown("---")
+st.header("➕ Ajouter une tâche")
+
+# Choix du type d'imprimante et numéro
+col1, col2 = st.columns(2)
+with col1:
+    type_imprimante = st.selectbox("Type d'imprimante", ["A", "B"])
+with col2:
+    if type_imprimante == "A":
+        numero = st.selectbox("Numéro d'imprimante", list(range(1, 11)))
+    else:
+        numero = st.selectbox("Numéro d'imprimante", list(range(1, 7)))
+
+imprimante_choisie = f"{type_imprimante}{numero}"
+ticket = st.text_input("Numéro du ticket")
+duree = st.number_input("Durée (minutes)", min_value=1, max_value=480, value=30)
+
+# Limiter choix d'heure de début entre 8h et 17h
+horaires_autorises = [time(h, 0) for h in range(8, 18)]
+heure_debut = st.selectbox("Heure de début", horaires_autorises)
+date_debut = st.date_input("Date de début", value=datetime.today())
+
+if st.button("Ajouter au planning"):
+    dt_start = datetime.combine(date_debut, heure_debut)
+    nouvelle_ligne = pd.DataFrame.from_dict({
+        "Ticket": [ticket],
+        "Start": [dt_start],
+        "Duration": [duree],
+        "Imprimante": [imprimante_choisie]
+    })
+    full_df = pd.concat([full_df, nouvelle_ligne], ignore_index=True)
+    full_df.drop_duplicates(inplace=True)
+    full_df.to_csv(csv_path, index=False)
+    st.success(f"Tâche {ticket} ajoutée à {imprimante_choisie}.")
+    st.experimental_rerun()
