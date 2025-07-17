@@ -48,13 +48,21 @@ def date_to_filename(date):
 def load_planning(date):
     doc_ref = db.collection("plannings").document(str(date))
     doc = doc_ref.get()
+
     if doc.exists:
         data = doc.to_dict()
-        df = pd.DataFrame(data["entries"])
-        df["Start"] = pd.to_datetime(df["Start"])
-        return df
+        df = pd.DataFrame(data["tasks"]) if data and "tasks" in data else pd.DataFrame()
+
+        # ✅ Vérifie que la colonne "Start" existe
+        if "Start" in df.columns:
+            df["Start"] = pd.to_datetime(df["Start"])
+        else:
+            st.warning("⚠️ Aucune colonne 'Start' trouvée dans le planning.")
     else:
-        return pd.DataFrame(columns=["Printer", "Start", "Duration", "Ticket", "Color"])
+        df = pd.DataFrame()
+
+    return df
+
 
 def save_planning(df, date):
     doc_ref = db.collection("plannings").document(str(date))
