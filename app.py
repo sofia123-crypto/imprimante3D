@@ -227,7 +227,12 @@ full_df = get_planning_with_previous_day(st.session_state.date)
 if full_df["Ticket"].isna().all():
     st.info("Aucune impression planifiée pour cette date.")
 
-# ✅ Affiche quand même le Gantt si les bonnes colonnes sont là
+# 🧪 Affichage debug même si les colonnes sont incorrectes
+st.write("🧪 DEBUG planning : colonnes actuelles")
+st.write(full_df.columns.tolist())
+st.write(full_df.head())
+
+# ✅ Affiche Gantt si les bonnes colonnes sont là
 required_columns = {"Start", "End", "Printer", "Ticket"}
 if required_columns.issubset(full_df.columns):
     # 🗑️ Annulation d'une impression
@@ -244,11 +249,9 @@ if required_columns.issubset(full_df.columns):
             st.success(f"❌ Impression '{to_delete}' annulée. veuillez rafraîchir la page!")
         else:
             st.warning("Ce ticket vient peut-être de la veille : modifiez le jour pour le supprimer.")
-    st.write("🧪 DEBUG planning : colonnes actuelles")
-    st.write(full_df.columns.tolist())
-    st.write(full_df.head())
 
     # 📊 Affichage du diagramme de Gantt
     plot_gantt(full_df)
 else:
     st.warning("⚠️ Impossible d'afficher le planning : colonnes manquantes.")
+
