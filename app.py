@@ -5,9 +5,8 @@ import os
 import hashlib
 import firebase_admin
 from firebase_admin import credentials, firestore
-import json
 
-# --- 🔐 CONFIGURATION FIREBASE À PARTIR DE SECRETS STREAMLIT ---
+# === CONFIGURATION FIREBASE ===
 if not firebase_admin._apps:
     firebase_json = {
         "type": st.secrets["FIREBASE_TYPE"],
@@ -22,73 +21,57 @@ if not firebase_admin._apps:
         "client_x509_cert_url": st.secrets["FIREBASE_CLIENT_CERT_URL"],
         "universe_domain": st.secrets["FIREBASE_UNIVERSE_DOMAIN"]
     }
-
     cred = credentials.Certificate(firebase_json)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
 
-# --- CONSTANTES ---
+# === CONSTANTES ===
 PRINTERS_A = [f"A{i+1}" for i in range(10)]
 PRINTERS_B = [f"B{i+1}" for i in range(6)]
 ALL_PRINTERS = PRINTERS_A + PRINTERS_B
-DATA_FOLDER = "data"
 
-if not os.path.exists(DATA_FOLDER):
-    os.makedirs(DATA_FOLDER)
-
-# --- SESSION STATE ---
+# === SESSION STATE ===
 if "date" not in st.session_state:
     st.session_state.date = datetime.today().date()
 
-# --- Fonctions fichiers ---
-def date_to_filename(date):
-    return os.path.join(DATA_FOLDER, f"planning_{date}.csv")
-
+# === FONCTIONS BASE DE DONNÉES ===
 def load_planning(date):
-    db = firestore.client()
     date_str = date.strftime("%Y-%m-%d")
-    docs = db.collection("plannings").document(date_str).get()
-
-    if docs.exists:
-        data = docs.to_dict().get("impressions", [])
+    doc = db.collection("plannings").document(date_str).get()
+    if doc.exists:
+        data = doc.to_dict().get("impressions", [])
         df = pd.DataFrame(data)
-        # Forcer les colonnes attendues même si elles sont absentes
         for col in ["Start", "Duration", "Printer", "Ticket", "Color"]:
             if col not in df.columns:
                 df[col] = pd.NA
+        df["Start"] = pd.to_datetime(df["Start"], errors="coerce")
+        df["Duration"] = pd.to_numeric(df["Duration"], errors="coerce")
         return df
     else:
-        # Renvoyer un DataFrame vide avec les bonnes colonnes
         return pd.DataFrame(columns=["Start", "Duration", "Printer", "Ticket", "Color"])
-
-
 
 def save_planning(df, date):
     doc_ref = db.collection("plannings").document(str(date))
     df_copy = df.copy()
     df_copy["Start"] = df_copy["Start"].astype(str)
-    # 🔧 CORRIGÉ ICI : on enregistre dans le champ "impressions" comme le chargement s'y attend
     doc_ref.set({"impressions": df_copy.to_dict(orient="records")})
-
 
 def get_planning_with_previous_day(date):
     today_df = load_planning(date)
     previous_df = load_planning(date - timedelta(days=1))
-
     extended = []
     for _, row in previous_df.iterrows():
         start = row["Start"]
         end = start + timedelta(minutes=row["Duration"])
         if start.date() < date and end.date() >= date:
-            adjusted_row = row.copy()
-            adjusted_row["Start"] = datetime.combine(date, time(0, 0))
-            adjusted_row["Duration"] = int((end - adjusted_row["Start"]).total_seconds() / 60)
-            extended.append(adjusted_row)
-
+            new_row = row.copy()
+            new_row["Start"] = datetime.combine(date, time(0, 0))
+            new_row["Duration"] = int((end - new_row["Start"]).total_seconds() / 60)
+            extended.append(new_row)
     return pd.concat([today_df] + [pd.DataFrame(extended)], ignore_index=True)
 
-# --- Autres fonctions ---
+# === UTILITAIRES ===
 def validate_inputs(printer, start_time, ticket, duration):
     errors = []
     if printer not in ALL_PRINTERS:
@@ -97,7 +80,7 @@ def validate_inputs(printer, start_time, ticket, duration):
         errors.append("L'heure de départ doit être entre 08:00 et 17:00.")
     if not ticket:
         errors.append("Le numéro du ticket est requis.")
-    if duration <= 0 or duration > 24*60:
+    if duration <= 0 or duration > 1440:
         errors.append("Durée invalide.")
     return errors
 
@@ -112,29 +95,24 @@ def plot_gantt(df):
     import plotly.express as px
     from pandas import Timestamp
 
-    if df.empty or not {"Start", "Duration", "Printer", "Ticket", "Color"}.issubset(df.columns):
-        st.warning("⚠️ Impossible d'afficher le planning : données manquantes ou vides.")
-        return
-
     df = df.copy()
-    df["End"] = df["Start"] + pd.to_timedelta(df["Duration"], unit='m')
+    df["End"] = pd.NaT
+    df["Start"] = pd.to_datetime(df["Start"], errors="coerce")
+    df["Duration"] = pd.to_numeric(df["Duration"], errors="coerce")
+    mask = df["Start"].notna() & df["Duration"].notna()
+    df.loc[mask, "End"] = df.loc[mask, "Start"] + pd.to_timedelta(df.loc[mask, "Duration"], unit='m')
 
-    # 👇 Merge avec toutes les imprimantes
     all_printers_df = pd.DataFrame({"Printer": ALL_PRINTERS})
     df = pd.merge(all_printers_df, df, on="Printer", how="left")
-
-    # 👇 Remplissage des valeurs manquantes pour affichage Gantt
     df["Start"] = df["Start"].fillna(Timestamp.combine(st.session_state.date, time(0, 0)))
-    df["End"] = df["End"].fillna(Timestamp.combine(st.session_state.date, time(0, 1)))  # 1 min factice
+    df["End"] = df["End"].fillna(Timestamp.combine(st.session_state.date, time(0, 1)))
     df["Ticket"] = df["Ticket"].fillna("Aucune tâche")
     df["Color"] = df["Color"].fillna("#e0e0e0")
 
-    # ✅ Option : masquer les imprimantes sans tâches réelles
     hide_empty = st.checkbox("Masquer les imprimantes sans tâche réelle", value=False)
     if hide_empty:
         df = df[df["Ticket"] != "Aucune tâche"]
 
-    # 📊 Génération du Gantt
     fig = px.timeline(
         df,
         x_start="Start",
@@ -142,7 +120,6 @@ def plot_gantt(df):
         y="Printer",
         color="Ticket",
         color_discrete_sequence=df["Color"].tolist(),
-        labels={"Printer": "Imprimantes", "Start": "Heure", "End": "Fin"},
     )
 
     fig.update_yaxes(categoryorder='array', categoryarray=ALL_PRINTERS[::-1])
@@ -153,17 +130,14 @@ def plot_gantt(df):
                 datetime.combine(st.session_state.date, time(0, 0)),
                 datetime.combine(st.session_state.date + timedelta(days=1), time(0, 0))
             ],
-            dtick=3600 * 1000,
-            title="Heure"
+            dtick=3600 * 1000
         ),
         height=600,
         title=f"🕒 Planning du {st.session_state.date.strftime('%d/%m/%Y')}"
     )
-
     st.plotly_chart(fig, use_container_width=True)
 
-
-# --- INTERFACE ---
+# === INTERFACE ===
 st.set_page_config(page_title="📅 Planning Impression 3D", layout="wide")
 st.title("📅 Planning Impression 3D - Atelier")
 
@@ -188,7 +162,7 @@ with st.form("form_add"):
         printer = f"{type_printer}{printer_num}"
     with colB:
         start_time = st.time_input("Heure de départ (08:00 - 17:00)", time(8,0))
-        duration = st.number_input("Durée (minutes)", min_value=1, max_value=24*60, value=60)
+        duration = st.number_input("Durée (minutes)", min_value=1, max_value=1440, value=60)
         ticket = st.text_input("Numéro du ticket")
     add_btn = st.form_submit_button("Ajouter")
 
@@ -200,8 +174,8 @@ with st.form("form_add"):
         else:
             start_dt = datetime.combine(st.session_state.date, start_time)
             end_dt = start_dt + timedelta(minutes=duration)
-
             current_df = load_planning(st.session_state.date)
+
             conflit = False
             for _, row in current_df.iterrows():
                 if row["Printer"] != printer:
@@ -227,60 +201,27 @@ with st.form("form_add"):
                 save_planning(updated_df, st.session_state.date)
                 st.success("✅ Impression ajoutée avec succès.")
 
-                if end_dt.date() > st.session_state.date:
-                    st.info("ℹ️ L'impression dépassera minuit et continuera le jour suivant.")
-
 st.subheader("📋 Planning du jour")
-
 full_df = get_planning_with_previous_day(st.session_state.date)
-# 🛠️ Génère la colonne "End" si elle manque
+
 if "End" not in full_df.columns and {"Start", "Duration"}.issubset(full_df.columns):
-    full_df["End"] = full_df["Start"] + pd.to_timedelta(full_df["Duration"], unit="m")
+    full_df["Start"] = pd.to_datetime(full_df["Start"], errors="coerce")
+    full_df["Duration"] = pd.to_numeric(full_df["Duration"], errors="coerce")
+    mask = full_df["Start"].notna() & full_df["Duration"].notna()
+    full_df.loc[mask, "End"] = full_df.loc[mask, "Start"] + pd.to_timedelta(full_df.loc[mask, "Duration"], unit="m")
 
-
-# ✅ Affiche message si aucune tâche, mais continue l'affichage du planning
-if full_df["Ticket"].isna().all():
-    st.info("Aucune impression planifiée pour cette date.")
-
-# 🧪 Affichage debug même si les colonnes sont incorrectes
-st.write("🧪 DEBUG planning : colonnes actuelles")
-st.write(full_df.columns.tolist())
-st.write(full_df.head())
-
-# ✅ Affiche Gantt si les bonnes colonnes sont là
-required_columns = {"Start", "End", "Printer", "Ticket"}
-
-# 🔍 Vérifie proprement les colonnes, même si DataFrame vide
-actual_columns = set(map(str, full_df.columns))
-missing_columns = required_columns - actual_columns
-st.write("📋 Colonnes actuelles du planning :", full_df.columns.tolist())
-st.write("🔍 Aperçu du planning :", full_df.head())
-
-if not missing_columns:
-    # ✅ Affiche un message si le planning est vide
-    if full_df.empty:
-        st.info("📭 Le planning est vide pour cette date.")
-    else:
-        st.success("✅ Planning chargé.")
-
-    # 🗑️ Annulation d'une impression
-    if not full_df.empty:
-        to_delete = st.selectbox(
-            "🗑️ Sélectionner une impression à annuler (par ticket)",
-            options=full_df["Ticket"].unique()
-        )
-        if st.button("Annuler l’impression sélectionnée"):
-            current_df = load_planning(st.session_state.date)
-            idx = current_df[current_df["Ticket"] == to_delete].index
-            if not idx.empty:
-                current_df = remove_entry(current_df, idx[0])
-                save_planning(current_df, st.session_state.date)
-                st.success(f"❌ Impression '{to_delete}' annulée. veuillez rafraîchir la page!")
-            else:
-                st.warning("Ce ticket vient peut-être de la veille : modifiez le jour pour le supprimer.")
-
-    # 📊 Affichage du diagramme de Gantt (même vide !)
-    plot_gantt(full_df)
-
+if full_df.empty or full_df["Ticket"].isna().all():
+    st.info("📭 Aucune impression planifiée pour cette date.")
 else:
-    st.warning(f"⚠️ Impossible d'afficher le planning : colonnes manquantes : {missing_columns}")
+    to_delete = st.selectbox("🗑️ Sélectionner une impression à annuler (par ticket)", options=full_df["Ticket"].dropna().unique())
+    if st.button("Annuler l’impression sélectionnée"):
+        current_df = load_planning(st.session_state.date)
+        idx = current_df[current_df["Ticket"] == to_delete].index
+        if not idx.empty:
+            current_df = remove_entry(current_df, idx[0])
+            save_planning(current_df, st.session_state.date)
+            st.success(f"❌ Impression '{to_delete}' annulée. veuillez rafraîchir la page!")
+        else:
+            st.warning("Ce ticket vient peut-être de la veille : modifiez le jour pour le supprimer.")
+
+plot_gantt(full_df)
