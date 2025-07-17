@@ -221,8 +221,6 @@ with st.form("form_add"):
 
 st.subheader("📋 Planning du jour")
 
-st.subheader("📋 Planning du jour")
-
 full_df = get_planning_with_previous_day(st.session_state.date)
 
 # ✅ Affiche message si aucune tâche, mais continue l'affichage du planning
@@ -246,6 +244,9 @@ if required_columns.issubset(full_df.columns):
             st.success(f"❌ Impression '{to_delete}' annulée. veuillez rafraîchir la page!")
         else:
             st.warning("Ce ticket vient peut-être de la veille : modifiez le jour pour le supprimer.")
+    st.write("🧪 DEBUG planning : colonnes actuelles")
+    st.write(full_df.columns.tolist())
+    st.write(full_df.head())
 
     # 📊 Affichage du diagramme de Gantt
     plot_gantt(full_df)
