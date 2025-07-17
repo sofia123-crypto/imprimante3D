@@ -110,6 +110,10 @@ def plot_gantt(df):
     import plotly.express as px
     from pandas import Timestamp
 
+    if df.empty or not {"Start", "Duration", "Printer", "Ticket", "Color"}.issubset(df.columns):
+        st.warning("⚠️ Impossible d'afficher le planning : données manquantes ou vides.")
+        return
+
     df = df.copy()
     df["End"] = df["Start"] + pd.to_timedelta(df["Duration"], unit='m')
 
@@ -130,6 +134,7 @@ def plot_gantt(df):
         color_discrete_sequence=df["Color"].tolist(),
         labels={"Printer": "Imprimantes", "Start": "Heure", "End": "Fin"},
     )
+
     fig.update_yaxes(categoryorder='array', categoryarray=ALL_PRINTERS[::-1])
     fig.update_layout(
         xaxis=dict(
@@ -144,6 +149,7 @@ def plot_gantt(df):
         height=600,
         title=f"🕒 Planning du {st.session_state.date.strftime('%d/%m/%Y')}"
     )
+
     st.plotly_chart(fig, use_container_width=True)
 
 # --- INTERFACE ---
