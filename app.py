@@ -68,7 +68,9 @@ def save_planning(df, date):
     doc_ref = db.collection("plannings").document(str(date))
     df_copy = df.copy()
     df_copy["Start"] = df_copy["Start"].astype(str)
-    doc_ref.set({"entries": df_copy.to_dict(orient="records")})
+    # 🔧 CORRIGÉ ICI : on enregistre dans le champ "impressions" comme le chargement s'y attend
+    doc_ref.set({"impressions": df_copy.to_dict(orient="records")})
+
 
 def get_planning_with_previous_day(date):
     today_df = load_planning(date)
