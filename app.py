@@ -46,22 +46,22 @@ def date_to_filename(date):
     return os.path.join(DATA_FOLDER, f"planning_{date}.csv")
 
 def load_planning(date):
-    doc_ref = db.collection("plannings").document(str(date))
-    doc = doc_ref.get()
+    db = firestore.client()
+    date_str = date.strftime("%Y-%m-%d")
+    docs = db.collection("plannings").document(date_str).get()
 
-    if doc.exists:
-        data = doc.to_dict()
-        df = pd.DataFrame(data["tasks"]) if data and "tasks" in data else pd.DataFrame()
-
-        # ✅ Vérifie que la colonne "Start" existe
-        if "Start" in df.columns:
-            df["Start"] = pd.to_datetime(df["Start"])
-        else:
-            st.warning("⚠️ Aucune colonne 'Start' trouvée dans le planning.")
+    if docs.exists:
+        data = docs.to_dict().get("impressions", [])
+        df = pd.DataFrame(data)
+        # Forcer les colonnes attendues même si elles sont absentes
+        for col in ["Start", "Duration", "Printer", "Ticket", "Color"]:
+            if col not in df.columns:
+                df[col] = pd.NA
+        return df
     else:
-        df = pd.DataFrame()
+        # Renvoyer un DataFrame vide avec les bonnes colonnes
+        return pd.DataFrame(columns=["Start", "Duration", "Printer", "Ticket", "Color"])
 
-    return df
 
 
 def save_planning(df, date):
@@ -222,8 +222,10 @@ with st.form("form_add"):
 st.subheader("📋 Planning du jour")
 
 full_df = get_planning_with_previous_day(st.session_state.date)
-if full_df.empty:
+
+if full_df.empty or "Start" not in full_df.columns or full_df["Start"].isna().all():
     st.info("Aucune impression planifiée pour cette date.")
+    st.warning("⚠️ Impossible d'afficher le planning : données manquantes ou vides.")
 else:
     to_delete = st.selectbox("🗑️ Sélectionner une impression à annuler (par ticket)", options=full_df["Ticket"].unique())
     if st.button("Annuler l’impression sélectionnée"):
@@ -236,4 +238,5 @@ else:
         else:
             st.warning("Ce ticket vient peut-être de la veille : modifiez le jour pour le supprimer.")
 
-plot_gantt(full_df)
+    plot_gantt(full_df)
+
