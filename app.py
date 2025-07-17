@@ -224,6 +224,10 @@ with st.form("form_add"):
 st.subheader("📋 Planning du jour")
 
 full_df = get_planning_with_previous_day(st.session_state.date)
+# 🛠️ Génère la colonne "End" si elle manque
+if "End" not in full_df.columns and {"Start", "Duration"}.issubset(full_df.columns):
+    full_df["End"] = full_df["Start"] + pd.to_timedelta(full_df["Duration"], unit="m")
+
 
 # ✅ Affiche message si aucune tâche, mais continue l'affichage du planning
 if full_df["Ticket"].isna().all():
