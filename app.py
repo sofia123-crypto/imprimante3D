@@ -6,11 +6,11 @@ import hashlib
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# Initialisation de Firebase
-cred = credentials.Certificate("credentials/credentials.json")
-firebase_admin.initialize_app(cred)
+# === Initialisation Firebase ===
+if not firebase_admin._apps:
+    cred = credentials.Certificate("credentials/credentials.json")
+    firebase_admin.initialize_app(cred)
 
-# Connexion à Firestore
 db = firestore.client()
 
 # --- CONSTANTES ---
@@ -31,16 +31,21 @@ def date_to_filename(date):
     return os.path.join(DATA_FOLDER, f"planning_{date}.csv")
 
 def load_planning(date):
-    file = date_to_filename(date)
-    if os.path.exists(file):
-        df = pd.read_csv(file, parse_dates=["Start"])
+    doc_ref = db.collection("plannings").document(str(date))
+    doc = doc_ref.get()
+    if doc.exists:
+        data = doc.to_dict()
+        df = pd.DataFrame(data["entries"])
+        df["Start"] = pd.to_datetime(df["Start"])
         return df
     else:
         return pd.DataFrame(columns=["Printer", "Start", "Duration", "Ticket", "Color"])
 
 def save_planning(df, date):
-    file = date_to_filename(date)
-    df.to_csv(file, index=False)
+    doc_ref = db.collection("plannings").document(str(date))
+    df_copy = df.copy()
+    df_copy["Start"] = df_copy["Start"].astype(str)
+    doc_ref.set({"entries": df_copy.to_dict(orient="records")})
 
 # --- Afficher les tâches du jour + celles de la veille qui débordent ---
 def get_planning_with_previous_day(date):
@@ -159,7 +164,6 @@ with st.form("form_add"):
             start_dt = datetime.combine(st.session_state.date, start_time)
             end_dt = start_dt + timedelta(minutes=duration)
 
-            # Vérifier conflit
             current_df = load_planning(st.session_state.date)
             conflit = False
             for _, row in current_df.iterrows():
@@ -186,7 +190,6 @@ with st.form("form_add"):
                 save_planning(updated_df, st.session_state.date)
                 st.success("✅ Impression ajoutée avec succès.")
 
-                # Message si dépasse minuit
                 if end_dt.date() > st.session_state.date:
                     st.info("ℹ️ L'impression dépassera minuit et continuera le jour suivant.")
 
