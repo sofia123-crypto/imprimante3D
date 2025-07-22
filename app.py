@@ -204,24 +204,6 @@ with st.form("form_add"):
 st.subheader("📋 Planning du jour")
 full_df = get_planning_with_previous_day(st.session_state.date)
 
-# 🔁 BOUTONS DE NAVIGATION RAPIDE (juste avant le Gantt)
-st.markdown("### 🔄 Navigation rapide")
-col1b, col2b, col3b = st.columns([1, 3, 1])
-with col1b:
-    if st.button("⬅️ Jour précédent", key="prev_bottom"):
-        st.session_state.date -= timedelta(days=1)
-        st.experimental_rerun()
-with col3b:
-    if st.button("Jour suivant ➡️", key="next_bottom"):
-        st.session_state.date += timedelta(days=1)
-        st.experimental_rerun()
-with col2b:
-    new_date_b = st.date_input("📆 Date", st.session_state.date, key="date_bottom")
-    if new_date_b != st.session_state.date:
-        st.session_state.date = new_date_b
-        st.experimental_rerun()
-
-# ✅ GANTT
 if "End" not in full_df.columns and {"Start", "Duration"}.issubset(full_df.columns):
     full_df["Start"] = pd.to_datetime(full_df["Start"], errors="coerce")
     full_df["Duration"] = pd.to_numeric(full_df["Duration"], errors="coerce")
@@ -241,7 +223,8 @@ else:
             st.success(f"❌ Impression '{to_delete}' annulée. veuillez rafraîchir la page!")
         else:
             st.warning("Ce ticket vient peut-être de la veille : modifiez le jour pour le supprimer.")
-# 🔁 BOUTONS DE NAVIGATION (juste avant le Gantt)
+
+# 🔁 BOUTONS JUSTE AU-DESSUS DU GANTT
 col1b, col2b, col3b = st.columns([1, 3, 1])
 with col1b:
     if st.button("⬅️ Jour précédent", key="prev_bottom"):
@@ -257,4 +240,5 @@ with col2b:
         st.session_state.date = new_date_b
         st.experimental_rerun()
 
+# 📊 GANTT
 plot_gantt(full_df)
