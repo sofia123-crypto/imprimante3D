@@ -124,26 +124,26 @@ def plot_gantt(df):
 
     fig.update_yaxes(categoryorder='array', categoryarray=ALL_PRINTERS[::-1])
     # === LIGNES DE SÉPARATION ENTRE IMPRIMANTES ===
-unique_printers = sorted(df["Imprimante"].unique(), reverse=True)
-shapes = []
-for i in range(1, len(unique_printers)):
-    shapes.append({
-        "type": "line",
-        "xref": "paper",
-        "yref": "y",
-        "x0": 0,
-        "x1": 1,
-        "y0": unique_printers[i],
-        "y1": unique_printers[i],
-        "line": {
-            "color": "black",
-            "width": 1,
-            "dash": "solid"
-        },
-        "layer": "below"
-    })
+    unique_printers = sorted(df["Imprimante"].unique(), reverse=True)
+    shapes = []
+    for i in range(1, len(unique_printers)):
+        shapes.append({
+            "type": "line",
+            "xref": "paper",
+            "yref": "y",
+            "x0": 0,
+            "x1": 1,
+            "y0": unique_printers[i],
+            "y1": unique_printers[i],
+            "line": {
+                "color": "black",
+                "width": 1,
+                "dash": "solid"
+            },
+            "layer": "below"
+        })
 
-fig.update_layout(shapes=shapes)
+    fig.update_layout(shapes=shapes)
 
     fig.update_layout(
         xaxis=dict(
