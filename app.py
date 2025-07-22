@@ -84,9 +84,6 @@ def validate_inputs(printer, start_time, ticket, duration):
         errors.append("Durée invalide.")
     return errors
 
-def generate_color(ticket):
-    h = hashlib.md5(ticket.encode()).hexdigest()
-    return "#" + h[:6]
 
 def remove_entry(df, index):
     return df.drop(index).reset_index(drop=True)
