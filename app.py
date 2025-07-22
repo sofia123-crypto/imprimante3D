@@ -107,7 +107,18 @@ def plot_gantt(df):
     df["Start"] = df["Start"].fillna(Timestamp.combine(st.session_state.date, time(0, 0)))
     df["End"] = df["End"].fillna(Timestamp.combine(st.session_state.date, time(0, 1)))
     df["Ticket"] = df["Ticket"].fillna("Aucune tâche")
-    df["Color"] = df["Color"].fillna("#e0e0e0")
+
+    # Génère une couleur unique par ticket si elle n'existe pas encore
+    def generate_color(ticket):
+        import hashlib
+        h = hashlib.md5(ticket.encode()).hexdigest()
+        return "#" + h[:6]
+
+    df["Color"] = df.apply(
+        lambda row: row["Color"] if pd.notna(row["Color"]) else generate_color(str(row["Ticket"])),
+        axis=1
+    )
+    df["Color"] = df["Color"].fillna("#e0e0e0")  # couleur grise si pas de ticket
 
     hide_empty = st.checkbox("Masquer les imprimantes sans tâche réelle", value=False)
     if hide_empty:
@@ -123,7 +134,7 @@ def plot_gantt(df):
     )
 
     fig.update_yaxes(categoryorder='array', categoryarray=ALL_PRINTERS[::-1])
-    # === LIGNES DE SÉPARATION ENTRE IMPRIMANTES ===
+
     unique_printers = sorted(df["Printer"].unique(), reverse=True)
     shapes = []
     for i in range(1, len(unique_printers)):
@@ -142,7 +153,6 @@ def plot_gantt(df):
             },
             "layer": "below"
         })
-
     fig.update_layout(shapes=shapes)
 
     fig.update_layout(
@@ -157,6 +167,7 @@ def plot_gantt(df):
         height=600,
         title=f"🕒 Planning du {st.session_state.date.strftime('%d/%m/%Y')}"
     )
+
     st.plotly_chart(fig, use_container_width=True)
 
 # === INTERFACE ===
