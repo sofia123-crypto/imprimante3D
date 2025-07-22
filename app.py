@@ -5,7 +5,7 @@ import os
 import hashlib
 import firebase_admin
 from firebase_admin import credentials, firestore
-
+import io
 # === CONFIGURATION FIREBASE ===
 if not firebase_admin._apps:
     firebase_json = {
@@ -166,6 +166,22 @@ def plot_gantt(df):
     )
 
     st.plotly_chart(fig, use_container_width=True)
+    # === COMPTEUR DE TEMPS PAR IMPRIMANTE ===
+    working_time = df[df["Ticket"] != "Aucune tâche"].groupby("Printer")["Duration"].sum().fillna(0).astype(int)
+
+# Affichage sous forme de tableau
+    st.markdown("### ⏱️ Durée totale de travail par imprimante (en minutes)")
+    st.dataframe(working_time.reset_index().rename(columns={"Duration": "Durée (min)"}), use_container_width=True)
+    # === SAUVEGARDE EN CSV ===
+
+    csv_buffer = io.StringIO()
+    working_time.reset_index().rename(columns={"Duration": "Durée (min)"}).to_csv(csv_buffer, index=False)
+    st.download_button(
+        label="💾 Télécharger le bilan CSV",
+        data=csv_buffer.getvalue(),
+        file_name=f"bilan_imprimantes_{st.session_state.date.strftime('%Y_%m')}.csv",
+        mime="text/csv"
+    )
 
 # === INTERFACE ===
 st.set_page_config(page_title="📅 Planning Impression 3D", layout="wide")
