@@ -229,16 +229,16 @@ col1b, col2b, col3b = st.columns([1, 3, 1])
 with col1b:
     if st.button("⬅️ Jour précédent", key="prev_bottom"):
         st.session_state.date -= timedelta(days=1)
-        st.experimental_rerun()
+        st.rerun()
 with col3b:
     if st.button("Jour suivant ➡️", key="next_bottom"):
         st.session_state.date += timedelta(days=1)
-        st.experimental_rerun()
+        st.rerun()
 with col2b:
     new_date_b = st.date_input("📆 Date", st.session_state.date, key="date_bottom")
     if new_date_b != st.session_state.date:
         st.session_state.date = new_date_b
-        st.experimental_rerun()
+        st.rerun()
 
 # 📊 GANTT
 plot_gantt(full_df)
