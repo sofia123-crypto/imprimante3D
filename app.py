@@ -6,6 +6,7 @@ import hashlib
 import firebase_admin
 from firebase_admin import credentials, firestore
 import io
+import random
 # === CONFIGURATION FIREBASE ===
 if not firebase_admin._apps:
     firebase_json = {
@@ -72,6 +73,9 @@ def get_planning_with_previous_day(date):
     return pd.concat([today_df] + [pd.DataFrame(extended)], ignore_index=True)
 
 # === UTILITAIRES ===
+def generate_color(ticket):
+    random.seed(hash(ticket) % (2**32))  # pour avoir une couleur stable par ticket
+    return "#{:06x}".format(random.randint(0, 0xFFFFFF))
 def validate_inputs(printer, start_time, ticket, duration):
     errors = []
     if printer not in ALL_PRINTERS:
