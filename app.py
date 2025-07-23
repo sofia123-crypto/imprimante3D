@@ -46,6 +46,7 @@ with col2:
 
 if start_date > end_date:
     st.error("⛔ La date de début ne peut pas être après la date de fin.")
+full_df = pd.read_csv("data/journal.csv")  # adapte le chemin si besoin
 filtered_df = full_df.copy()
 filtered_df["Start"] = pd.to_datetime(filtered_df["Start"], errors="coerce")
 
