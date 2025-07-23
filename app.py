@@ -35,6 +35,40 @@ ALL_PRINTERS = PRINTERS_A + PRINTERS_B
 # === SESSION STATE ===
 if "date" not in st.session_state:
     st.session_state.date = datetime.today().date()
+#===SELECTEUR DE PERIODE==#
+st.subheader("📆 Exporter un bilan sur une période")
+
+col1, col2 = st.columns(2)
+with col1:
+    start_date = st.date_input("Date de début", value=st.session_state.date.replace(day=1))
+with col2:
+    end_date = st.date_input("Date de fin", value=st.session_state.date)
+
+if start_date > end_date:
+    st.error("⛔ La date de début ne peut pas être après la date de fin.")
+filtered_df = full_df.copy()
+filtered_df["Start"] = pd.to_datetime(filtered_df["Start"], errors="coerce")
+
+mask = (filtered_df["Start"] >= pd.to_datetime(start_date)) & (filtered_df["Start"] <= pd.to_datetime(end_date))
+filtered_df = filtered_df[mask]
+usage_summary = (
+    filtered_df[filtered_df["Ticket"].notna()]
+    .groupby("Printer")["Duration"]
+    .sum()
+    .fillna(0)
+    .astype(int)
+    .reset_index()
+    .rename(columns={"Duration": "Durée (min)"})
+)
+csv_buffer = io.StringIO()
+usage_summary.to_csv(csv_buffer, index=False)
+
+st.download_button(
+    label="💾 Télécharger le bilan pour cette période",
+    data=csv_buffer.getvalue(),
+    file_name=f"bilan_imprimantes_{start_date}_au_{end_date}.csv",
+    mime="text/csv"
+)
 
 # === FONCTIONS BASE DE DONNÉES ===
 def load_planning(date):
