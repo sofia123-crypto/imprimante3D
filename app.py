@@ -31,20 +31,28 @@ db = firestore.client()
 PRINTERS_A = [f"A{i+1}" for i in range(10)]
 PRINTERS_B = [f"B{i+1}" for i in range(6)]
 ALL_PRINTERS = PRINTERS_A + PRINTERS_B
+# === 🔁 Exporter toutes les impressions depuis Firestore ===
+def export_all_data_from_firestore():
+    all_docs = db.collection("plannings").stream()
+    all_data = []
+    for doc in all_docs:
+        date = doc.id
+        impressions = doc.to_dict().get("impressions", [])
+        for imp in impressions:
+            imp["Date"] = date
+            all_data.append(imp)
+    df = pd.DataFrame(all_data)
+    if not df.empty:
+        df["Start"] = pd.to_datetime(df["Start"], errors="coerce")
+        df["Duration"] = pd.to_numeric(df["Duration"], errors="coerce")
+        df = df[["Date", "Start", "Duration", "Printer", "Ticket", "Color"]]
+    return df
 
 # === SESSION STATE ===
 if "date" not in st.session_state:
     st.session_state.date = datetime.today().date()
-# === Créer journal.csv s'il n'existe pas ou vide ===
-journal_path = "data/journal.csv"
-os.makedirs("data", exist_ok=True)
 
-if not os.path.exists(journal_path) or os.path.getsize(journal_path) == 0:
-    empty_df = pd.DataFrame(columns=["Ticket", "Printer", "Start", "End", "Duration"])
-    empty_df.to_csv(journal_path, index=False)
-# === Charger le journal complet ===
-full_df = pd.read_csv(journal_path)    
-# === SELECTEUR DE PERIODE ===
+# === SELECTEUR DE PÉRIODE POUR EXPORT CSV ===
 st.subheader("📆 Exporter un bilan sur une période")
 
 col1, col2 = st.columns(2)
@@ -56,15 +64,14 @@ with col2:
 if start_date > end_date:
     st.error("⛔ La date de début ne peut pas être après la date de fin.")
 else:
-    # === Charger les données ===
-    full_df = pd.read_csv("data/journal.csv")  # Chemin à adapter si besoin
-    full_df["Start"] = pd.to_datetime(full_df["Start"], errors="coerce")
+    # 🔄 Extraire toutes les données de Firestore
+    full_df = export_all_data_from_firestore()
 
-    # === Filtrer par période ===
+    # 🧮 Filtrer par date
     mask = (full_df["Start"] >= pd.to_datetime(start_date)) & (full_df["Start"] <= pd.to_datetime(end_date))
     filtered_df = full_df[mask]
 
-    # === Résumer les durées par imprimante ===
+    # 📊 Résumé d'utilisation
     usage_summary = (
         filtered_df[filtered_df["Ticket"].notna()]
         .groupby("Printer")["Duration"]
@@ -75,7 +82,7 @@ else:
         .rename(columns={"Duration": "Durée (min)"})
     )
 
-    # === Télécharger le CSV ===
+    # 📁 Exporter en CSV
     csv_buffer = io.StringIO()
     usage_summary.to_csv(csv_buffer, index=False)
 
@@ -85,6 +92,7 @@ else:
         file_name=f"bilan_imprimantes_{start_date}_au_{end_date}.csv",
         mime="text/csv"
     )
+
 
 # === FONCTIONS BASE DE DONNÉES ===
 def load_planning(date):
