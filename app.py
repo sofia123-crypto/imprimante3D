@@ -61,7 +61,7 @@ if "date" not in st.session_state:
     st.session_state.date = datetime.today().date()
 
 # === SELECTEUR DE PÉRIODE POUR EXPORT CSV ===
-st.subheader("🗖️ Exporter un bilan sur une période")
+st.subheader("📆 Exporter un bilan sur une période")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -71,33 +71,36 @@ with col2:
 
 if start_date > end_date:
     st.error("⛔ La date de début ne peut pas être après la date de fin.")
-else:
-    full_df = export_all_data_from_firestore()
-    full_df["Start"] = pd.to_datetime(full_df["Start"], errors="coerce")
-    full_df = full_df.dropna(subset=["Start", "Duration", "Printer"])
+    
+# Toujours charger la data et préparer l'export, même si date incorrecte
+full_df = export_all_data_from_firestore()
 
-    mask = (full_df["Start"] >= pd.to_datetime(start_date)) & (full_df["Start"] <= pd.to_datetime(end_date) + timedelta(days=1))
+if start_date <= end_date:
+    # 🧮 Filtrer par date
+    mask = (full_df["Start"] >= pd.to_datetime(start_date)) & (full_df["Start"] <= pd.to_datetime(end_date))
     filtered_df = full_df[mask]
 
-    if not filtered_df.empty:
-        usage_summary = (
-            filtered_df[filtered_df["Ticket"].notna()]
-            .groupby("Printer")["Duration"]
-            .sum()
-            .fillna(0)
-            .astype(int)
-            .reset_index()
-            .rename(columns={"Duration": "Durée (min)"})
-        )
+    # 📊 Résumé d'utilisation
+    usage_summary = (
+        filtered_df[filtered_df["Ticket"].notna()]
+        .groupby("Printer")["Duration"]
+        .sum()
+        .fillna(0)
+        .astype(int)
+        .reset_index()
+        .rename(columns={"Duration": "Durée (min)"})
+    )
 
-        csv_buffer = io.StringIO()
-        usage_summary.to_csv(csv_buffer, index=False)
+    # 📁 Exporter en CSV
+    csv_buffer = io.StringIO()
+    usage_summary.to_csv(csv_buffer, index=False)
 
-        st.download_button(
-            label="💾 Télécharger le bilan pour cette période",
-            data=csv_buffer.getvalue(),
-            file_name=f"bilan_imprimantes_{start_date}_au_{end_date}.csv",
-            mime="text/csv"
-        )
+    st.download_button(
+        label="💾 Télécharger le bilan pour cette période",
+        data=csv_buffer.getvalue(),
+        file_name=f"bilan_imprimantes_{start_date}_au_{end_date}.csv",
+        mime="text/csv"
+    )
+
     else:
         st.info("📅 Aucune donnée disponible pour la période choisie.")
