@@ -35,7 +35,15 @@ ALL_PRINTERS = PRINTERS_A + PRINTERS_B
 # === SESSION STATE ===
 if "date" not in st.session_state:
     st.session_state.date = datetime.today().date()
+# === Créer journal.csv s'il n'existe pas ou vide ===
+journal_path = "data/journal.csv"
+os.makedirs("data", exist_ok=True)
 
+if not os.path.exists(journal_path) or os.path.getsize(journal_path) == 0:
+    empty_df = pd.DataFrame(columns=["Ticket", "Printer", "Start", "End", "Duration"])
+    empty_df.to_csv(journal_path, index=False)
+# === Charger le journal complet ===
+full_df = pd.read_csv(journal_path)    
 # === SELECTEUR DE PERIODE ===
 st.subheader("📆 Exporter un bilan sur une période")
 
