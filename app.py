@@ -35,7 +35,8 @@ ALL_PRINTERS = PRINTERS_A + PRINTERS_B
 # === SESSION STATE ===
 if "date" not in st.session_state:
     st.session_state.date = datetime.today().date()
-#===SELECTEUR DE PERIODE==#
+
+# === SELECTEUR DE PERIODE ===
 st.subheader("📆 Exporter un bilan sur une période")
 
 col1, col2 = st.columns(2)
@@ -46,30 +47,36 @@ with col2:
 
 if start_date > end_date:
     st.error("⛔ La date de début ne peut pas être après la date de fin.")
-full_df = pd.read_csv("data/journal.csv")  # adapte le chemin si besoin
-filtered_df = full_df.copy()
-filtered_df["Start"] = pd.to_datetime(filtered_df["Start"], errors="coerce")
+else:
+    # === Charger les données ===
+    full_df = pd.read_csv("data/journal.csv")  # Chemin à adapter si besoin
+    full_df["Start"] = pd.to_datetime(full_df["Start"], errors="coerce")
 
-mask = (filtered_df["Start"] >= pd.to_datetime(start_date)) & (filtered_df["Start"] <= pd.to_datetime(end_date))
-filtered_df = filtered_df[mask]
-usage_summary = (
-    filtered_df[filtered_df["Ticket"].notna()]
-    .groupby("Printer")["Duration"]
-    .sum()
-    .fillna(0)
-    .astype(int)
-    .reset_index()
-    .rename(columns={"Duration": "Durée (min)"})
-)
-csv_buffer = io.StringIO()
-usage_summary.to_csv(csv_buffer, index=False)
+    # === Filtrer par période ===
+    mask = (full_df["Start"] >= pd.to_datetime(start_date)) & (full_df["Start"] <= pd.to_datetime(end_date))
+    filtered_df = full_df[mask]
 
-st.download_button(
-    label="💾 Télécharger le bilan pour cette période",
-    data=csv_buffer.getvalue(),
-    file_name=f"bilan_imprimantes_{start_date}_au_{end_date}.csv",
-    mime="text/csv"
-)
+    # === Résumer les durées par imprimante ===
+    usage_summary = (
+        filtered_df[filtered_df["Ticket"].notna()]
+        .groupby("Printer")["Duration"]
+        .sum()
+        .fillna(0)
+        .astype(int)
+        .reset_index()
+        .rename(columns={"Duration": "Durée (min)"})
+    )
+
+    # === Télécharger le CSV ===
+    csv_buffer = io.StringIO()
+    usage_summary.to_csv(csv_buffer, index=False)
+
+    st.download_button(
+        label="💾 Télécharger le bilan pour cette période",
+        data=csv_buffer.getvalue(),
+        file_name=f"bilan_imprimantes_{start_date}_au_{end_date}.csv",
+        mime="text/csv"
+    )
 
 # === FONCTIONS BASE DE DONNÉES ===
 def load_planning(date):
